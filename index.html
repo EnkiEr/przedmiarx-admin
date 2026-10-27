@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="PX Admin">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>PrzedmiarX Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+/* Układ: nagłówek z okresem → wskaźniki → zysk na arkusz (kalkulator) → dostawcy AI → arkusze i sprzedaż → transakcje */
+:root {
+  --bg: #f3f2ee; --surface: #ffffff; --ink: #1d2126; --muted: #646b73; --line: #dcdad3;
+  --amber: #c27a0e; --amber-soft: #f6e7cc; --good: #2f7d4f; --warn: #a86a00; --bad: #b23a2e;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #15181b; --surface: #1d2125; --ink: #e9e7e1; --muted: #9aa1a8; --line: #2f343a;
+  --amber: #f0a73a; --amber-soft: #3a2e1a; --good: #5cbf85; --warn: #e7b54a; --bad: #ec7468; color-scheme: dark } }
+* { box-sizing: border-box; }
+html, body { margin: 0; max-width: 100%; overflow-x: hidden; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.45;
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.wrap { max-width: 1100px; margin: 0 auto; padding-block: 18px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 22px; }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; border-bottom: 2px solid var(--ink); padding-bottom: 10px; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: 2.1rem; margin: 0; line-height: 1; }
+h1 span { color: var(--amber); }
+h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; text-transform: uppercase; letter-spacing: .06em; margin: 0 0 10px; }
+h3 { font-size: .95rem; margin: 0 0 8px; }
+.sub { color: var(--muted); font-size: .85rem; }
+.hidden { display: none !important; }
+.controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--surface); }
+.seg button { border: 0; background: none; color: var(--ink); font: 500 .85rem var(--font-body); padding: 7px 12px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+button.btn { border: 1px solid var(--ink); background: var(--ink); color: var(--bg); border-radius: 6px; font: 600 .88rem var(--font-body); padding: 9px 14px; cursor: pointer; }
+button.btn.ghost { background: transparent; color: var(--ink); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+button:disabled { opacity: .5; cursor: default; }
+section.panel { background: var(--surface); border: 1px solid var(--line); padding: 16px; min-width: 0; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.kpi { background: var(--surface); padding: 14px 16px; display: grid; gap: 2px; min-width: 0; }
+.kpi .lab { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.kpi .val { font-family: var(--font-display); font-weight: 600; font-size: 2rem; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.kpi .note { font-size: .78rem; color: var(--muted); }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: .9rem; }
+th { text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--line); padding: 6px 8px 6px 0; }
+td { border-bottom: 1px solid var(--line); padding: 7px 8px 7px 0; }
+td.num, th.num { text-align: right; }
+.scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+.mono { font-family: var(--font-mono); font-size: .82rem; }
+.bar { display: grid; grid-template-columns: 9em 1fr 3em; align-items: center; gap: 10px; margin: 6px 0; font-size: .9rem; }
+.bar .track { height: 10px; background: var(--amber-soft); } .bar .fill { height: 100%; background: var(--amber); }
+.bar .n { text-align: right; font-variant-numeric: tabular-nums; }
+.split { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: .85rem; color: var(--muted); }
+.split b { color: var(--ink); font-variant-numeric: tabular-nums; }
+svg.chart text { fill: var(--muted); font: 11px var(--font-mono); }
+svg.chart .grid { stroke: var(--line); } svg.chart .area { fill: var(--amber-soft); } svg.chart .ln { stroke: var(--amber); fill: none; stroke-width: 2; } svg.chart .dot { fill: var(--amber); }
+form.cfg { display: grid; gap: 16px; }
+fieldset { border: 1px solid var(--line); padding: 12px; margin: 0; min-width: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+legend { font-weight: 600; padding: 0 6px; }
+label.f { display: grid; gap: 4px; font-size: .78rem; color: var(--muted); min-width: 0; }
+label.f input, label.f select { font: .92rem var(--font-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 8px; min-width: 0; width: 100%; }
+.wide { grid-column: 1 / -1; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.pill { display: inline-block; font-size: .72rem; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--amber-soft); color: var(--ink); }
+.pill.ok { background: color-mix(in srgb, var(--good) 18%, transparent); color: var(--good); }
+.pill.warn { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
+.pill.err { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+.alert { border: 1px solid var(--line); border-left: 4px solid var(--warn); padding: 10px 12px; background: var(--surface); font-size: .9rem; }
+.alert.err { border-left-color: var(--bad); } .alert.ok { border-left-color: var(--good); }
+.pos { color: var(--good); } .neg { color: var(--bad); } .low { color: var(--warn); }
+.msg { font-size: .85rem; } .msg.err { color: var(--bad); } .msg.ok { color: var(--good); }
+.empty { color: var(--muted); font-size: .88rem; padding: 6px 0; }
+.card { max-width: 420px; margin: 8vh auto 0; background: var(--surface); border: 1px solid var(--line); padding: 22px; display: grid; gap: 12px; }
+.card input { font: 1rem var(--font-body); padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); width: 100%; }
+.card img { background: #fff; padding: 8px; width: 200px; max-width: 100%; justify-self: center; }
+.secret { font-family: var(--font-mono); font-size: .8rem; word-break: break-all; background: var(--bg); padding: 6px; }
+#toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: 8px; font-size: .9rem; max-width: 90vw; }
+#toast.err { background: var(--bad); color: #fff; }
+@media (max-width: 600px) { .kpi .val { font-size: 1.6rem; } .bar { grid-template-columns: 7.5em 1fr 2.5em; } }
+</style>
+</head>
+<body>
+
+<!-- Logowanie -->
+<div id="login" class="card hidden">
+  <h1>Przedmiar<span>X</span> · admin</h1>
+  <p class="sub">Zaloguj się kontem administratora. Po zalogowaniu potrzebny jest kod z aplikacji uwierzytelniającej (2FA).</p>
+  <input id="email" type="email" autocomplete="username" placeholder="E-mail">
+  <input id="password" type="password" autocomplete="current-password" placeholder="Hasło">
+  <div class="row"><button class="btn" id="signIn" type="button">Zaloguj</button><button class="btn ghost" id="signUp" type="button">Załóż konto</button><button class="btn ghost" id="sendLink" type="button">Wyślij link</button></div>
+  <div class="msg" id="loginMsg"></div>
+</div>
+
+<!-- 2FA -->
+<div id="mfa" class="card hidden">
+  <h2>Weryfikacja dwuskładnikowa</h2>
+  <div id="mfaEnroll" class="hidden" style="display:grid;gap:10px">
+    <p class="sub">Pierwsze logowanie: zeskanuj kod QR w aplikacji uwierzytelniającej (Hasła w iOS, Google Authenticator, 1Password) albo wpisz klucz ręcznie.</p>
+    <img id="mfaQr" alt="Kod QR do 2FA">
+    <div class="secret" id="mfaSecret"></div>
+  </div>
+  <p class="sub" id="mfaInfo">Wpisz 6-cyfrowy kod z aplikacji uwierzytelniającej.</p>
+  <input id="mfaCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456">
+  <div class="row"><button class="btn" id="mfaVerify" type="button">Potwierdź</button><button class="btn ghost" id="mfaNew" type="button">Nowy kod QR</button><button class="btn ghost" id="mfaLogout" type="button">Wyloguj</button></div>
+</div>
+
+<!-- Brak uprawnień -->
+<div id="noadmin" class="card hidden">
+  <h2>Brak uprawnień</h2>
+  <p class="sub">To konto nie jest na liście administratorów PrzedmiarX. Zalogowano jako <b id="noadminEmail"></b>.</p>
+  <button class="btn ghost" id="noadminLogout" type="button">Wyloguj</button>
+</div>
+
+<!-- Panel -->
+<div id="app" class="wrap hidden">
+  <header>
+    <div>
+      <h1>Przedmiar<span>X</span> · panel</h1>
+      <div class="sub"><span id="updated">Ładowanie…</span> · <span id="who"></span></div>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Okres">
+        <button type="button" data-days="1" aria-pressed="false">Dziś</button>
+        <button type="button" data-days="7" aria-pressed="false">7 dni</button>
+        <button type="button" data-days="30" aria-pressed="true">30 dni</button>
+        <button type="button" data-days="365" aria-pressed="false">Rok</button>
+      </div>
+      <button type="button" class="btn ghost" id="refresh">Odśwież</button>
+      <button type="button" class="btn ghost" id="logout">Wyloguj</button>
+    </div>
+  </header>
+
+  <div id="banner" class="alert hidden"></div>
+
+  <div class="kpis">
+    <div class="kpi"><span class="lab">Urządzenia</span><span class="val" data-k="installs_total">–</span><span class="note" data-k="installs_note">nowe: –</span></div>
+    <div class="kpi"><span class="lab">Aktywne dziś</span><span class="val" data-k="active_1d">–</span><span class="note" data-k="active_note">w 7 dni: –</span></div>
+    <div class="kpi"><span class="lab">Arkusze</span><span class="val" data-k="sheets">–</span><span class="note" data-k="sheets_note">płatne: –</span></div>
+    <div class="kpi"><span class="lab">Abonamenty</span><span class="val" data-k="subs">–</span><span class="note">aktywne</span></div>
+    <div class="kpi"><span class="lab">Przychód netto</span><span class="val" data-k="net">–</span><span class="note">po VAT i prowizji Apple</span></div>
+    <div class="kpi"><span class="lab">Koszt AI</span><span class="val" data-k="cost">–</span><span class="note" data-k="cost_note">–</span></div>
+    <div class="kpi"><span class="lab">Zysk w okresie</span><span class="val" data-k="profit">–</span><span class="note" data-k="profit_note">przychód netto − koszt AI</span></div>
+  </div>
+
+  <section class="panel">
+    <h2>Zysk na arkusz</h2>
+    <p class="sub" id="calcBasis">Przychód netto za 1 arkusz w każdym produkcie minus koszt AI za 1 arkusz. Abonament liczony przy pełnym wykorzystaniu limitu (najgorszy przypadek).</p>
+    <div id="calcAlert" class="alert hidden" style="margin-bottom:12px"></div>
+    <div class="scroll"><table>
+      <thead><tr><th>Produkt</th><th class="num">Cena brutto</th><th class="num">Netto / arkusz</th><th class="num" id="thMain">Zysk · główny</th><th class="num" id="thBackup">Zysk · zapasowy</th></tr></thead>
+      <tbody id="calcRows"></tbody>
+    </table></div>
+    <div class="split" id="calcCosts"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Dostawcy AI</h2>
+    <div class="row" style="margin-bottom:12px">
+      <span>Teraz:</span><b id="curMain">–</b><span class="sub">→ zapasowy:</span><b id="curBackup">–</b><span class="pill" id="health">–</span>
+    </div>
+    <form class="cfg" id="cfg" autocomplete="off">
+      <fieldset>
+        <legend>Główny</legend>
+        <label class="f">Dostawca<select id="provider"></select></label>
+        <label class="f">Model<input id="primary_model" list="models" required></label>
+        <label class="f">Cena wejścia, USD / 1 mln tokenów<input id="price_in_per_m" type="number" step="0.001" min="0"></label>
+        <label class="f">Cena wyjścia, USD / 1 mln tokenów<input id="price_out_per_m" type="number" step="0.001" min="0"></label>
+        <label class="f wide hidden" id="baseWrap">Adres /chat/completions<input id="base_url" type="url" placeholder="https://…/v1/chat/completions"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Zapasowy (gdy główny zwróci błąd, np. skończą się środki)</legend>
+        <label class="f">Dostawca<select id="backup_provider"></select></label>
+        <label class="f">Model<input id="backup_model" list="models"></label>
+        <label class="f">Cena wejścia, USD / 1 mln tokenów<input id="backup_price_in_per_m" type="number" step="0.001" min="0"></label>
+        <label class="f">Cena wyjścia, USD / 1 mln tokenów<input id="backup_price_out_per_m" type="number" step="0.001" min="0"></label>
+        <label class="f wide hidden" id="backupBaseWrap">Adres /chat/completions<input id="backup_base_url" type="url" placeholder="https://…/v1/chat/completions"></label>
+      </fieldset>
+      <fieldset>
+        <legend>Kalkulacja i limity</legend>
+        <label class="f">Wywołań AI na arkusz<input id="calls_per_sheet" type="number" step="0.5" min="1"></label>
+        <label class="f">Kurs USD/PLN<input id="usd_pln" type="number" step="0.0001" min="0.1"></label>
+        <label class="f">Prowizja Apple<select id="apple_commission"><option value="0.15">15% (Small Business Program)</option><option value="0.3">30%</option></select></label>
+        <label class="f">VAT<input id="vat_rate" type="number" step="0.01" min="0" max="0.5"></label>
+        <label class="f">Limit dzienny bez zakupu (zapytań)<input id="daily_limit_free" type="number" min="0" step="1"></label>
+        <label class="f">Limit dzienny łącznie (zapytań)<input id="daily_limit_global" type="number" min="0" step="1"></label>
+      </fieldset>
+      <datalist id="models">
+        <option value="claude-sonnet-5-5"><option value="claude-haiku-5-5"><option value="claude-opus-5-5">
+        <option value="gemini-3.8-flash"><option value="gemini-3.6-flash">
+      </datalist>
+      <div class="alert" id="keyInfo"></div>
+      <div class="row"><button type="submit" class="btn" id="save">Zapisz ustawienia</button><button type="button" class="btn ghost" id="nbp">Kurs NBP</button><span class="msg" id="saveMsg"></span></div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Zużycie AI w okresie</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Dostawca</th><th>Model</th><th class="num">Zapytania</th><th class="num">Udane</th><th class="num">Jako zapasowy</th><th class="num">Śr. tokeny we/wy</th><th class="num">Koszt</th></tr></thead>
+      <tbody id="usage"><tr><td colspan="7" class="empty">Brak zapytań w tym okresie.</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <section class="panel">
+    <h2>Dzień po dniu</h2>
+    <div class="scroll"><svg class="chart" id="chart" viewBox="0 0 900 200" width="100%" role="img" aria-label="Arkusze dziennie"></svg></div>
+    <div class="split"><span>Linia: arkusze dziennie</span></div>
+  </section>
+
+  <div class="grid2">
+    <section class="panel">
+      <h2>Arkusze wg branży</h2>
+      <div id="branches"><div class="empty">Brak arkuszy w tym okresie.</div></div>
+      <div class="split" id="sheetSplit"></div>
+    </section>
+    <section class="panel">
+      <h2>Sprzedaż wg produktu</h2>
+      <div class="scroll"><table>
+        <thead><tr><th>Produkt</th><th class="num">Sprzedaż</th><th class="num">Brutto</th><th class="num">Zwroty</th></tr></thead>
+        <tbody id="revenue"><tr><td colspan="4" class="empty">Brak sprzedaży w tym okresie.</td></tr></tbody>
+      </table></div>
+      <p class="sub">Dane z powiadomień App Store. Wypłaty sprawdzisz w App Store Connect → Payments and Financial Reports.</p>
+    </section>
+  </div>
+
+  <section class="panel">
+    <h2>Ostatnie transakcje</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Data</th><th>Zdarzenie</th><th>Produkt</th><th class="num">Kwota</th><th>Kraj</th></tr></thead>
+      <tbody id="tx"><tr><td colspan="5" class="empty">Jeszcze nie było transakcji.</td></tr></tbody>
+    </table></div>
+  </section>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script>
+const SUPABASE_URL = "https://mjjhtatgngfbigkowxzi.supabase.co";
+const SUPABASE_KEY = "sb_publishable_dkoVr8qmvOcwhDsovCmyVw_yjIkkje9";
+const PROJECT = "mjjhtatgngfbigkowxzi";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, storageKey: "px_admin_auth" } });
+
+const PROVIDERS = { anthropic: "Anthropic (Claude)", gemini: "Google Gemini", openai: "OpenAI", xai: "xAI (Grok)", mistral: "Mistral", openrouter: "OpenRouter", custom: "Inny (adres zgodny z OpenAI)" };
+const KEY_NAMES = { gemini: "GEMINI_API_KEY", openai: "OPENAI_API_KEY", anthropic: "ANTHROPIC_API_KEY", xai: "XAI_API_KEY", mistral: "MISTRAL_API_KEY", openrouter: "OPENROUTER_API_KEY", custom: "CUSTOM_API_KEY" };
+// Ceny katalogowe (USD / 1 mln tokenów) — podpowiedź przy wyborze modelu; zawsze możesz je nadpisać.
+const PRICE_PRESETS = {
+  "claude-sonnet-5-5": [2, 10], "claude-haiku-5-5": [0.10, 0.50], "claude-opus-5-5": [4, 20],
+  "gemini-3.8-flash": new Date() < new Date("2027-01-01") ? [0.75, 3.75] : [1.5, 7.5],
+  "gemini-3.6-flash": new Date() < new Date("2027-01-01") ? [0.75, 3.75] : [1.5, 7.5],
+};
+// Średnie tokeny na wywołanie z testu na rysunku 1600×1600 px (październik 2026). Gdy w bazie jest
+// co najmniej 20 udanych zapytań danego modelu, panel bierze prawdziwe średnie.
+const TOKEN_DEFAULTS = {
+  "anthropic:claude-sonnet-5-5": [4860, 2899], "anthropic:claude-haiku-5-5": [4860, 3688],
+  "anthropic:claude-opus-5-5": [4860, 2900], "gemini:gemini-3.8-flash": [2106, 4044],
+};
+const TOKEN_PROVIDER_DEFAULTS = { anthropic: [4860, 3000], gemini: [2106, 4044] };
+const PRODUCTS = [
+  { id: "przedmiarx.arkusze.10", name: "Pakiet 10 arkuszy", price: 49.99, sheets: 10 },
+  { id: "przedmiarx.arkusze.100", name: "Pakiet 100 arkuszy", price: 399.99, sheets: 100 },
+  { id: "przedmiarx.budowlana.monthly", name: "Abonament branżowy (10/mies.)", price: 39.99, sheets: 10 },
+  { id: "przedmiarx.kompletna.monthly", name: "Abonament kompletny (40/mies.)", price: 139.99, sheets: 40 },
+];
+const PRODUCT_LABEL = {
+  "przedmiarx.arkusze.10": "Pakiet 10 arkuszy", "przedmiarx.arkusze.100": "Pakiet 100 arkuszy",
+  "przedmiarx.budowlana.monthly": "Abonament: budowlana", "przedmiarx.elektryczna.monthly": "Abonament: elektryczna",
+  "przedmiarx.instalacje_wew.monthly": "Abonament: instalacje wew.", "przedmiarx.instalacje_zew.monthly": "Abonament: instalacje zew.",
+  "przedmiarx.kompletna.monthly": "Abonament: kompletny" };
+const BRANCH_LABEL = { budowlana: "Budowlana", elektryczna: "Elektryczna", instalacjeWewnetrzne: "Instalacje wew.", instalacjeZewnetrzne: "Instalacje zew." };
+const EVENT_LABEL = { SUBSCRIBED: "Nowy abonament", DID_RENEW: "Odnowienie", ONE_TIME_CHARGE: "Zakup pakietu", REFUND: "Zwrot", EXPIRED: "Wygaśnięcie", DID_CHANGE_RENEWAL_STATUS: "Zmiana odnawiania", DID_FAIL_TO_RENEW: "Nieudane odnowienie" };
+const MARGIN_WARN = 0.30; // ostrzeżenie, gdy zysk spada poniżej 30% przychodu netto z arkusza
+
+const $ = (id) => document.getElementById(id);
+const fmt = (n, d = 0) => Number(n || 0).toLocaleString("pl-PL", { minimumFractionDigits: d, maximumFractionDigits: d });
+const zl = (n, d = 2) => fmt(n, d) + " zł";
+const money = (n, cur) => { try { return Number(n || 0).toLocaleString("pl-PL", { style: "currency", currency: cur || "PLN", maximumFractionDigits: 2 }); } catch { return fmt(n, 2) + " " + (cur || ""); } };
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let toastTimer; function toast(t, err) { const el = $("toast"); el.textContent = t; el.className = err ? "err" : ""; clearTimeout(toastTimer); toastTimer = setTimeout(() => el.className = "hidden", 4500); }
+function show(id) { for (const v of ["login", "mfa", "noadmin", "app"]) $(v).classList.toggle("hidden", v !== id); }
+
+let days = 30, saved = null, usage = [], lastStats = null;
+
+// ---------- Logowanie i 2FA (jak w panelu DistrictX) ----------
+$("signIn").onclick = async () => {
+  $("signIn").disabled = true;
+  const { error } = await sb.auth.signInWithPassword({ email: $("email").value.trim(), password: $("password").value });
+  $("signIn").disabled = false;
+  if (error) $("loginMsg").textContent = "Błąd: " + error.message; else start();
+};
+$("signUp").onclick = async () => {
+  const email = $("email").value.trim(), password = $("password").value;
+  if (!email || password.length < 10) { $("loginMsg").textContent = "Podaj e-mail i hasło (co najmniej 10 znaków)."; return; }
+  $("signUp").disabled = true;
+  const { error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: location.origin + location.pathname } });
+  $("signUp").disabled = false;
+  $("loginMsg").textContent = error ? "Błąd: " + error.message : "Konto założone. Potwierdź adres linkiem z e-maila, potem zaloguj się tutaj.";
+};
+$("sendLink").onclick = async () => {
+  const email = $("email").value.trim(); if (!email) return;
+  $("sendLink").disabled = true;
+  const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: false } });
+  $("sendLink").disabled = false;
+  $("loginMsg").textContent = error ? "Błąd: " + error.message : "Link wysłany. Otwórz e-mail na tym urządzeniu i kliknij link.";
+};
+$("password").onkeydown = (e) => { if (e.key === "Enter") $("signIn").click(); };
+for (const id of ["logout", "mfaLogout", "noadminLogout"]) $(id).onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+let mfaFactorId = null;
+async function setupMfa(forceNew) {
+  const { data, error } = await sb.auth.mfa.listFactors();
+  if (error) throw error;
+  const verified = (data?.totp || []).find((f) => f.status === "verified");
+  if (verified && !forceNew) { mfaFactorId = verified.id; $("mfaEnroll").classList.add("hidden"); $("mfaInfo").textContent = "Wpisz 6-cyfrowy kod z aplikacji uwierzytelniającej."; return; }
+  let pendingSaved = null; try { pendingSaved = JSON.parse(localStorage.getItem("px_mfa_pending") || "null"); } catch {}
+  const pending = (data?.all || []).filter((f) => f.status !== "verified");
+  if (!forceNew && pendingSaved && pending.some((f) => f.id === pendingSaved.id)) {
+    for (const f of pending.filter((f) => f.id !== pendingSaved.id)) await sb.auth.mfa.unenroll({ factorId: f.id });
+    mfaFactorId = pendingSaved.id; $("mfaQr").src = pendingSaved.qr; $("mfaSecret").textContent = pendingSaved.secret;
+    $("mfaEnroll").classList.remove("hidden"); return;
+  }
+  for (const f of pending) await sb.auth.mfa.unenroll({ factorId: f.id });
+  const { data: en, error: enErr } = await sb.auth.mfa.enroll({ factorType: "totp", friendlyName: "PrzedmiarX " + new Date().toISOString().slice(0, 16), issuer: "PrzedmiarX Admin" });
+  if (enErr) throw enErr;
+  mfaFactorId = en.id;
+  try { localStorage.setItem("px_mfa_pending", JSON.stringify({ id: en.id, qr: en.totp.qr_code, secret: en.totp.secret })); } catch {}
+  $("mfaQr").src = en.totp.qr_code; $("mfaSecret").textContent = en.totp.secret;
+  $("mfaEnroll").classList.remove("hidden");
+  $("mfaInfo").textContent = "Po dodaniu wpisu wpisz 6-cyfrowy kod, który pokazuje aplikacja.";
+}
+$("mfaVerify").onclick = async () => {
+  const code = $("mfaCode").value.trim();
+  if (!/^\d{6}$/.test(code) || !mfaFactorId) return toast("Wpisz 6 cyfr", true);
+  $("mfaVerify").disabled = true;
+  const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: mfaFactorId, code });
+  $("mfaVerify").disabled = false;
+  if (error) return toast("Zły kod. Sprawdź, czy telefon ma automatyczny czas. " + error.message, true);
+  try { localStorage.removeItem("px_mfa_pending"); } catch {}
+  $("mfaCode").value = ""; toast("Zweryfikowano"); start();
+};
+$("mfaCode").onkeydown = (e) => { if (e.key === "Enter") $("mfaVerify").click(); };
+$("mfaNew").onclick = async () => { try { await setupMfa(true); } catch (e) { toast(e.message || String(e), true); } };
+
+async function start() {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return show("login");
+    const { data: st, error } = await sb.rpc("admin_status");
+    if (error) throw error;
+    if (!st.admin_account) { $("noadminEmail").textContent = session.user.email || session.user.id; return show("noadmin"); }
+    if (st.aal !== "aal2") { show("mfa"); await setupMfa(false); return; }
+    $("who").textContent = session.user.email;
+    show("app");
+    load();
+  } catch (e) {
+    show("login"); $("loginMsg").textContent = "Błąd panelu: " + (e?.message || e) + ". Wyloguj się i zaloguj ponownie.";
+  }
+}
+
+// ---------- Kalkulacja zysku ----------
+const num = (id) => { const v = Number($(id).value); return Number.isFinite(v) ? v : 0; };
+function tokensFor(provider, model) {
+  const u = usage.find((r) => r.provider === provider && r.model === model && Number(r.ok) >= 20);
+  if (u) return { tin: Number(u.avg_in), tout: Number(u.avg_out), real: true };
+  const d = TOKEN_DEFAULTS[provider + ":" + model] || TOKEN_PROVIDER_DEFAULTS[provider] || [3000, 3000];
+  return { tin: d[0], tout: d[1], real: false };
+}
+function costPerSheetPLN(provider, model, pin, pout, calls, rate) {
+  const t = tokensFor(provider, model);
+  return { pln: calls * (t.tin * pin + t.tout * pout) / 1e6 * rate, ...t };
+}
+function formState() {
+  return {
+    provider: $("provider").value, model: $("primary_model").value.trim(), pin: num("price_in_per_m"), pout: num("price_out_per_m"),
+    bprovider: $("backup_provider").value, bmodel: $("backup_model").value.trim(), bpin: num("backup_price_in_per_m"), bpout: num("backup_price_out_per_m"),
+    calls: Math.max(1, num("calls_per_sheet")), rate: num("usd_pln") || 3.7, comm: Number($("apple_commission").value), vat: num("vat_rate"),
+  };
+}
+function netPerSheet(p, s) { return p.price / (1 + s.vat) * (1 - s.comm) / p.sheets; }
+function cell(profit, net) {
+  const m = net > 0 ? profit / net : -1;
+  const cls = profit < 0 ? "neg" : m < MARGIN_WARN ? "low" : "pos";
+  return `<td class="num ${cls}">${zl(profit)}<br><span class="sub">${fmt(m * 100)}%</span></td>`;
+}
+function renderCalc() {
+  const s = formState();
+  const main = costPerSheetPLN(s.provider, s.model, s.pin, s.pout, s.calls, s.rate);
+  const backup = s.bprovider && s.bmodel ? costPerSheetPLN(s.bprovider, s.bmodel, s.bpin, s.bpout, s.calls, s.rate) : null;
+  $("thMain").textContent = "Zysk · " + (s.model || "główny");
+  $("thBackup").textContent = backup ? "Zysk · " + s.bmodel : "Zysk · zapasowy";
+  let worst = Infinity, worstName = "";
+  $("calcRows").innerHTML = PRODUCTS.map((p) => {
+    const net = netPerSheet(p, s), pm = net - main.pln, pb = backup ? net - backup.pln : null;
+    if (pm / net < worst) { worst = pm / net; worstName = p.name; }
+    return `<tr><td>${esc(p.name)}</td><td class="num">${zl(p.price)}</td><td class="num">${zl(net)}</td>${cell(pm, net)}${backup ? cell(pb, net) : '<td class="num">–</td>'}</tr>`;
+  }).join("") + `<tr><td>Darmowy pierwszy arkusz</td><td class="num">0 zł</td><td class="num">0 zł</td><td class="num neg">${zl(-main.pln)}</td><td class="num">${backup ? zl(-backup.pln) : "–"}</td></tr>`;
+  $("calcCosts").innerHTML = `<span>Koszt AI na arkusz · główny: <b>${zl(main.pln)}</b> (${fmt(s.calls, 1)} wywołań × ${fmt(main.tin)}/${fmt(main.tout)} tokenów, ${main.real ? "dane rzeczywiste" : "szacunek z testu"})</span>`
+    + (backup ? `<span>· zapasowy: <b>${zl(backup.pln)}</b> (${backup.real ? "dane rzeczywiste" : "szacunek z testu"})</span>` : "")
+    + `<span>· kurs ${fmt(s.rate, 4)} zł/USD</span>`;
+
+  // Ostrzeżenia: zmiana na droższy model względem zapisanych ustawień i niska marża.
+  const msgs = [];
+  if (saved) {
+    const was = costPerSheetPLN(saved.provider, saved.primary_model, Number(saved.price_in_per_m), Number(saved.price_out_per_m), Number(saved.calls_per_sheet), Number(saved.usd_pln));
+    const changed = s.model !== saved.primary_model || s.provider !== saved.provider || s.pin !== Number(saved.price_in_per_m) || s.pout !== Number(saved.price_out_per_m);
+    if (changed && was.pln > 0 && main.pln > was.pln * 1.05) {
+      const ref = PRODUCTS[3], net = netPerSheet(ref, s);
+      msgs.push({ level: main.pln > net ? "err" : "", text: `Nowy model jest droższy o ${fmt((main.pln / was.pln - 1) * 100)}%: koszt arkusza ${zl(was.pln)} → ${zl(main.pln)}. Szacowany zysk na arkuszu w abonamencie kompletnym spadnie z ${zl(net - was.pln)} do ${zl(net - main.pln)}.` });
+    } else if (changed && was.pln > 0 && main.pln < was.pln * 0.95) {
+      msgs.push({ level: "ok", text: `Nowy model jest tańszy o ${fmt((1 - main.pln / was.pln) * 100)}%: koszt arkusza ${zl(was.pln)} → ${zl(main.pln)}.` });
+    }
+  }
+  if (worst < 0) msgs.push({ level: "err", text: `Strata: w produkcie „${worstName}" koszt AI przewyższa przychód z arkusza.` });
+  else if (worst < MARGIN_WARN) msgs.push({ level: "", text: `Niska marża: w produkcie „${worstName}" zysk to tylko ${fmt(worst * 100)}% przychodu netto z arkusza.` });
+  if ((s.provider === "gemini" || s.bprovider === "gemini") && new Date() < new Date("2027-01-01"))
+    msgs.push({ level: "", text: "Gemini 3.8 Flash ma cenę promocyjną do 31.12.2026. Od 1.01.2027 ceny rosną 2× (1,50 / 7,50 USD) — zmień ceny tutaj, gdy to nastąpi." });
+  const a = $("calcAlert");
+  if (msgs.length) { a.className = "alert " + (msgs.some((m) => m.level === "err") ? "err" : msgs.every((m) => m.level === "ok") ? "ok" : ""); a.innerHTML = msgs.map((m) => esc(m.text)).join("<br>"); }
+  else a.className = "alert hidden";
+}
+
+// ---------- Formularz dostawców ----------
+for (const sel of ["provider", "backup_provider"]) {
+  $(sel).innerHTML = (sel === "backup_provider" ? '<option value="">— brak —</option>' : "") + Object.entries(PROVIDERS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join("");
+}
+function syncForm() {
+  $("baseWrap").classList.toggle("hidden", $("provider").value !== "custom");
+  $("backupBaseWrap").classList.toggle("hidden", $("backup_provider").value !== "custom");
+  const p = $("provider").value, b = $("backup_provider").value;
+  $("keyInfo").innerHTML = `Klucze trzymasz w sekretach Supabase (nie w panelu i nie w aplikacji): główny <code class="mono">${KEY_NAMES[p]}</code>`
+    + (b ? `, zapasowy <code class="mono">${KEY_NAMES[b]}</code>` : "")
+    + `. <a href="https://supabase.com/dashboard/project/${PROJECT}/functions/secrets" target="_blank" rel="noopener">Otwórz sekrety Supabase</a>. Najpierw dodaj klucz, potem zmień dostawcę.`;
+  renderCalc();
+}
+function presetPrices(modelId, inId, outId) {
+  const p = PRICE_PRESETS[$(modelId).value.trim()];
+  if (p) { $(inId).value = p[0]; $(outId).value = p[1]; }
+}
+$("primary_model").addEventListener("change", () => { presetPrices("primary_model", "price_in_per_m", "price_out_per_m"); renderCalc(); });
+$("backup_model").addEventListener("change", () => { presetPrices("backup_model", "backup_price_in_per_m", "backup_price_out_per_m"); renderCalc(); });
+for (const id of ["provider", "backup_provider"]) $(id).addEventListener("change", syncForm);
+$("cfg").addEventListener("input", renderCalc);
+function fillForm(c) {
+  saved = c;
+  for (const k of ["provider", "primary_model", "price_in_per_m", "price_out_per_m", "base_url", "backup_provider", "backup_model", "backup_price_in_per_m",
+    "backup_price_out_per_m", "backup_base_url", "calls_per_sheet", "usd_pln", "vat_rate", "daily_limit_free", "daily_limit_global"]) if ($(k)) $(k).value = c[k] ?? "";
+  $("apple_commission").value = Number(c.apple_commission) >= 0.3 ? "0.3" : "0.15";
+  $("curMain").textContent = (PROVIDERS[c.provider] || c.provider) + " · " + c.primary_model;
+  $("curBackup").textContent = c.backup_provider ? (PROVIDERS[c.backup_provider] || c.backup_provider) + " · " + c.backup_model : "brak";
+  syncForm();
+}
+$("cfg").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const v = (k) => $(k).value.trim();
+  const payload = {
+    provider: v("provider"), primary_model: v("primary_model"), price_in_per_m: num("price_in_per_m"), price_out_per_m: num("price_out_per_m"), base_url: v("base_url"),
+    backup_provider: v("backup_provider"), backup_model: v("backup_model"), backup_price_in_per_m: num("backup_price_in_per_m"), backup_price_out_per_m: num("backup_price_out_per_m"), backup_base_url: v("backup_base_url"),
+    calls_per_sheet: num("calls_per_sheet"), usd_pln: num("usd_pln"), apple_commission: Number($("apple_commission").value), vat_rate: num("vat_rate"),
+    daily_limit_free: num("daily_limit_free"), daily_limit_global: num("daily_limit_global"),
+  };
+  if (payload.backup_provider && payload.backup_provider === payload.provider && payload.backup_model === payload.primary_model) {
+    $("saveMsg").className = "msg err"; $("saveMsg").textContent = "Zapasowy nie może być tym samym modelem co główny."; return;
+  }
+  $("save").disabled = true; $("saveMsg").className = "msg"; $("saveMsg").textContent = "Zapisuję…";
+  const { data, error } = await sb.rpc("admin_save_config", { p: payload });
+  $("save").disabled = false;
+  if (error) { $("saveMsg").className = "msg err"; $("saveMsg").textContent = "Nie zapisano: " + error.message; return; }
+  fillForm(data); $("saveMsg").className = "msg ok"; $("saveMsg").textContent = "Zapisano. Aplikacja używa nowych ustawień najpóźniej po minucie.";
+});
+$("nbp").onclick = async () => {
+  try {
+    const r = await fetch("https://api.nbp.pl/api/exchangerates/rates/a/usd/?format=json");
+    const j = await r.json(); const mid = j?.rates?.[0]?.mid;
+    if (!mid) throw new Error("brak kursu");
+    $("usd_pln").value = mid; renderCalc(); toast("Kurs NBP z " + j.rates[0].effectiveDate + ": " + mid + " zł. Zapisz ustawienia, aby go zachować.");
+  } catch (e) { toast("Nie udało się pobrać kursu NBP: " + (e.message || e), true); }
+};
+
+// ---------- Dane ----------
+function renderStats(s, c) {
+  const sh = s.sheets || {}, ai = s.ai || {};
+  const set = (k, v) => document.querySelectorAll(`[data-k="${k}"]`).forEach((el) => (el.textContent = v));
+  set("installs_total", fmt(s.installs_total)); set("installs_note", "nowe w okresie: " + fmt(s.installs_new));
+  set("active_1d", fmt(s.active_1d)); set("active_note", "w 7 dni: " + fmt(s.active_7d));
+  set("sheets", fmt(sh.total)); set("sheets_note", "płatne: " + fmt((sh.pack || 0) + (sh.subscription || 0)) + " · darmowe: " + fmt(sh.free));
+  set("subs", fmt(s.active_subscriptions));
+  const vat = Number(c.vat_rate), comm = Number(c.apple_commission), rate = Number(c.usd_pln);
+  let netPLN = 0, other = 0;
+  for (const r of s.revenue || []) { const v = (Number(r.gross) - Number(r.refunded)) / (1 + vat) * (1 - comm); if ((r.currency || "PLN") === "PLN") netPLN += v; else other += v; }
+  const costPLN = Number(ai.cost_usd || 0) * rate;
+  set("net", zl(netPLN)); set("cost", zl(costPLN));
+  set("cost_note", "$" + fmt(ai.cost_usd, 2) + " · " + fmt(ai.requests) + " zapytań" + (sh.total ? " · " + zl(costPLN / sh.total) + "/arkusz" : ""));
+  set("profit", zl(netPLN - costPLN)); set("profit_note", other ? "+ sprzedaż w innych walutach (netto " + fmt(other, 2) + ")" : "przychód netto − koszt AI");
+  document.querySelector('[data-k="profit"]').className = "val " + (netPLN - costPLN < 0 ? "neg" : "pos");
+
+  const err = ai.requests ? ai.errors / ai.requests : 0, h = $("health");
+  if (!ai.requests) { h.className = "pill"; h.textContent = "brak zapytań w okresie"; }
+  else if (err > 0.1) { h.className = "pill err"; h.textContent = fmt(err * 100) + "% nieudanych prób"; }
+  else { h.className = "pill ok"; h.textContent = "działa · błędy " + fmt(err * 100, 1) + "%"; }
+
+  const br = Object.entries(s.sheets_by_branch || {}).sort((a, b) => b[1] - a[1]), max = Math.max(1, ...br.map((e) => e[1]));
+  $("branches").innerHTML = br.length ? br.map(([k, n]) => `<div class="bar"><span>${esc(BRANCH_LABEL[k] || k)}</span><div class="track"><div class="fill" style="width:${n / max * 100}%"></div></div><span class="n">${fmt(n)}</span></div>`).join("") : '<div class="empty">Brak arkuszy w tym okresie.</div>';
+  $("sheetSplit").innerHTML = `<span>Darmowe <b>${fmt(sh.free)}</b></span><span>Z pakietów <b>${fmt(sh.pack)}</b></span><span>Z abonamentów <b>${fmt(sh.subscription)}</b></span>`;
+  const rev = s.revenue || [];
+  $("revenue").innerHTML = rev.length ? rev.map((r) => `<tr><td>${esc(PRODUCT_LABEL[r.product_id] || r.product_id || "–")}</td><td class="num">${fmt(r.sales)}</td><td class="num">${money(r.gross, r.currency)}</td><td class="num">${r.refunds ? fmt(r.refunds) + " · " + money(r.refunded, r.currency) : "–"}</td></tr>`).join("") : '<tr><td colspan="4" class="empty">Brak sprzedaży w tym okresie.</td></tr>';
+  renderChart(s.daily || []);
+}
+function renderChart(daily) {
+  const svg = $("chart"), W = 900, H = 200, L = 40, R = 12, T = 12, B = 26;
+  if (!daily.length) { svg.innerHTML = ""; return; }
+  const vals = daily.map((d) => Number(d.sheets || 0)), top = Math.max(4, Math.ceil(Math.max(...vals) / 4) * 4);
+  const x = (i) => L + (daily.length === 1 ? (W - L - R) / 2 : i * (W - L - R) / (daily.length - 1)), y = (v) => T + (H - T - B) * (1 - v / top);
+  let g = ""; for (let k = 0; k <= 4; k++) { const v = top / 4 * k; g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${fmt(v)}</text>`; }
+  const step = Math.max(1, Math.ceil(daily.length / 8));
+  daily.forEach((d, i) => { if (i % step === 0 || i === daily.length - 1) g += `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${esc(String(d.day).slice(5))}</text>`; });
+  const pts = vals.map((v, i) => `${x(i)},${y(v)}`).join(" "), last = vals.length - 1;
+  svg.innerHTML = g + `<polygon class="area" points="${x(0)},${y(0)} ${pts} ${x(last)},${y(0)}"/><polyline class="ln" points="${pts}"/><circle class="dot" cx="${x(last)}" cy="${y(vals[last])}" r="4"/>`;
+}
+function renderUsage(rows, lastBackup) {
+  $("usage").innerHTML = rows.length ? rows.map((r) => `<tr><td>${esc(PROVIDERS[r.provider] || r.provider)}</td><td class="mono">${esc(r.model)}</td><td class="num">${fmt(r.requests)}</td><td class="num">${fmt(r.ok)}</td><td class="num">${fmt(r.backup_requests)}</td><td class="num">${fmt(r.avg_in)} / ${fmt(r.avg_out)}</td><td class="num">$${fmt(r.cost_usd, 4)}</td></tr>`).join("") : '<tr><td colspan="7" class="empty">Brak zapytań w tym okresie.</td></tr>';
+  const b = $("banner");
+  if (lastBackup && Date.now() - new Date(lastBackup).getTime() < 24 * 3600e3) {
+    b.className = "alert err"; b.textContent = "W ciągu ostatnich 24 h aplikacja korzystała z dostawcy zapasowego (ostatnio " + new Date(lastBackup).toLocaleString("pl-PL") + "). Sprawdź środki i klucz dostawcy głównego.";
+  } else b.className = "alert hidden";
+}
+function renderTx(rows) {
+  $("tx").innerHTML = rows.length ? rows.map((r) => `<tr><td class="mono">${esc(String(r.received_at).slice(0, 16).replace("T", " "))}</td><td>${esc(EVENT_LABEL[r.notification_type] || r.notification_type)}${r.environment === "Sandbox" ? ' <span class="pill">test</span>' : ""}</td><td>${esc(PRODUCT_LABEL[r.product_id] || r.product_id || "–")}</td><td class="num">${r.price != null ? money(r.price, r.currency) : "–"}</td><td>${esc(r.storefront || "–")}</td></tr>`).join("") : '<tr><td colspan="5" class="empty">Jeszcze nie było transakcji.</td></tr>';
+}
+async function load() {
+  $("refresh").disabled = true;
+  const { data, error } = await sb.rpc("admin_dashboard", { p_days: days });
+  $("refresh").disabled = false;
+  if (error) { toast("Nie udało się pobrać danych: " + error.message, true); if (/uprawnie/i.test(error.message)) start(); return; }
+  usage = data.usage || [];
+  lastStats = data.stats;
+  fillForm(data.config);
+  renderStats(data.stats, data.config);
+  renderUsage(usage, data.last_backup);
+  renderTx(data.tx || []);
+  $("updated").textContent = "Stan na " + new Date().toLocaleString("pl-PL", { dateStyle: "medium", timeStyle: "short" });
+}
+document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+  days = Number(b.dataset.days);
+  document.querySelectorAll(".seg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  load();
+}));
+$("refresh").onclick = load;
+sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_IN" && $("app").classList.contains("hidden")) start(); });
+start();
+</script>
+</body>
+</html>
