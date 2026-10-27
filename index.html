@@ -330,6 +330,13 @@ async function setupMfa(forceNew) {
     mfaFactorId = pendingSaved.id; $("mfaQr").src = pendingSaved.qr; $("mfaSecret").textContent = pendingSaved.secret;
     $("mfaEnroll").classList.remove("hidden"); return;
   }
+  // Rejestracja rozpoczęta na innym urządzeniu (inny kod QR) — nie kasujemy jej po cichu, bo kod z tamtego QR przestałby działać.
+  const recentOther = pending.find((f) => Date.now() - new Date(f.created_at).getTime() < 15 * 60e3);
+  if (!forceNew && recentOther) {
+    $("mfaEnroll").classList.add("hidden");
+    $("mfaInfo").textContent = "Kod QR do 2FA został już pokazany na innym urządzeniu (np. iPhonie). Dokończ tam: zeskanuj tamten kod i wpisz 6 cyfr. Jeśli nie masz go już pod ręką, kliknij „Nowy kod QR” — wtedy tamten przestanie działać.";
+    return;
+  }
   for (const f of pending) await sb.auth.mfa.unenroll({ factorId: f.id });
   const { data: en, error: enErr } = await sb.auth.mfa.enroll({ factorType: "totp", friendlyName: "PrzedmiarX " + new Date().toISOString().slice(0, 16), issuer: "PrzedmiarX Admin" });
   if (enErr) throw enErr;
@@ -345,7 +352,7 @@ $("mfaVerify").onclick = async () => {
   $("mfaVerify").disabled = true;
   const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: mfaFactorId, code });
   $("mfaVerify").disabled = false;
-  if (error) return toast("Zły kod. Sprawdź, czy telefon ma automatyczny czas. " + error.message, true);
+  if (error) return toast("Zły kod. Użyj wpisu „PrzedmiarX Admin” dodanego z kodu QR widocznego TERAZ na tej stronie (nie wpisu DistrictX) i sprawdź, czy telefon ma automatyczny czas. " + error.message, true);
   try { localStorage.removeItem("px_mfa_pending"); } catch {}
   $("mfaCode").value = ""; toast("Zweryfikowano"); start();
 };
