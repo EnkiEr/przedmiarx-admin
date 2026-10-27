@@ -89,6 +89,17 @@ label.f input, label.f select { font: .92rem var(--font-body); color: var(--ink)
 #toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: 8px; font-size: .9rem; max-width: 90vw; }
 #toast.err { background: var(--bad); color: #fff; }
 @media (max-width: 600px) { .kpi .val { font-size: 1.6rem; } .bar { grid-template-columns: 7.5em 1fr 2.5em; } }
+.fb { border-top: 1px solid var(--line); padding: 12px 0; display: grid; gap: 8px; }
+.fb:first-child { border-top: 0; }
+.fb .meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: .78rem; color: var(--muted); }
+.fb .t { font-weight: 600; }
+.fb .b { white-space: pre-wrap; font-size: .9rem; }
+.fb textarea, .fb input, .fb select { font: .9rem var(--font-body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 5px; padding: 7px; width: 100%; min-width: 0; }
+.fb textarea { min-height: 60px; resize: vertical; }
+.fb .acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; align-items: end; }
+.fb label { display: grid; gap: 3px; font-size: .75rem; color: var(--muted); }
+.fb label.chk { display: flex; gap: 6px; align-items: center; font-size: .85rem; color: var(--ink); }
+.fb label.chk input { width: auto; }
 </style>
 </head>
 <body>
@@ -234,6 +245,19 @@ label.f input, label.f select { font: .92rem var(--font-body); color: var(--ink)
       <p class="sub">Dane z powiadomień App Store. Wypłaty sprawdzisz w App Store Connect → Payments and Financial Reports.</p>
     </section>
   </div>
+
+  <section class="panel">
+    <div class="row" style="justify-content:space-between"><h2 style="margin:0">Zgłoszenia i propozycje użytkowników</h2>
+      <div class="seg" id="fbfilter">
+        <button type="button" data-f="open" aria-pressed="true">Otwarte</button>
+        <button type="button" data-f="bug" aria-pressed="false">Błędy</button>
+        <button type="button" data-f="idea" aria-pressed="false">Pomysły</button>
+        <button type="button" data-f="voting" aria-pressed="false">W głosowaniu</button>
+        <button type="button" data-f="all" aria-pressed="false">Wszystkie</button>
+      </div></div>
+    <p class="sub">Odpowiedź widzi autor w aplikacji (zakładka „Moje”). „Pod głosowanie” pokazuje pomysł wszystkim użytkownikom w zakładce „Propozycje” — możesz nadać mu publiczny tytuł i opis.</p>
+    <div id="fblist"><div class="empty">Ładowanie…</div></div>
+  </section>
 
   <section class="panel">
     <h2>Ostatnie transakcje</h2>
@@ -555,11 +579,68 @@ async function load() {
   renderStats(data.stats, data.config);
   renderUsage(usage, data.last_backup);
   renderTx(data.tx || []);
+  loadFeedback();
   $("updated").textContent = "Stan na " + new Date().toLocaleString("pl-PL", { dateStyle: "medium", timeStyle: "short" });
 }
-document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+
+// ——— Zgłoszenia użytkowników ———
+const FB_STATUS = { new: "Nowe", in_progress: "W realizacji", planned: "Zaplanowane", done: "Zrobione", rejected: "Odrzucone" };
+const LANG_LABEL = { pl: "PL", en: "EN", de: "DE", uk: "UA", nb: "NO", fr: "FR", es: "ES" };
+let feedback = [], fbFilter = "open";
+function fbVisible(f) {
+  if (fbFilter === "open") return !["done", "rejected"].includes(f.status);
+  if (fbFilter === "voting") return f.voting;
+  if (fbFilter === "all") return true;
+  return f.kind === fbFilter;
+}
+function renderFeedback() {
+  const rows = feedback.filter(fbVisible);
+  const newCount = feedback.filter((f) => f.status === "new").length;
+  document.querySelector('#fbfilter [data-f="open"]').textContent = "Otwarte" + (newCount ? ` (${newCount} nowe)` : "");
+  $("fblist").innerHTML = rows.length ? rows.map((f) => `
+    <div class="fb" data-id="${f.id}">
+      <div class="meta"><span class="pill ${f.kind === "bug" ? "err" : "warn"}">${f.kind === "bug" ? "Błąd" : "Pomysł"}</span>
+        <span class="pill ${f.status === "done" ? "ok" : f.status === "rejected" ? "err" : ""}">${FB_STATUS[f.status] || f.status}</span>
+        ${f.voting ? `<span class="pill ok">głosowanie · ${f.votes} głosów</span>` : ""}
+        <span class="mono">${esc(String(f.created_at).slice(0, 16).replace("T", " "))}</span>
+        <span>v${esc(f.app_version || "?")} · ${esc(LANG_LABEL[f.language] || f.language || "?")} · <span class="mono">${esc(String(f.install_id).slice(0, 8))}</span></span></div>
+      <div class="t">${esc(f.title)}</div>
+      ${f.body ? `<div class="b">${esc(f.body)}</div>` : ""}
+      <label>Odpowiedź dla autora<textarea data-k="admin_reply" placeholder="Np. Dziękujemy, poprawimy w wersji 1.2">${esc(f.admin_reply || "")}</textarea></label>
+      <div class="acts">
+        <label>Status<select data-k="status">${Object.entries(FB_STATUS).map(([k, v]) => `<option value="${k}"${k === f.status ? " selected" : ""}>${v}</option>`).join("")}</select></label>
+        <label class="chk"><input type="checkbox" data-k="voting"${f.voting ? " checked" : ""}> Pod głosowanie użytkowników</label>
+        <label>Publiczny tytuł (opcjonalnie)<input data-k="public_title" value="${esc(f.public_title || "")}" placeholder="${esc(f.title)}"></label>
+        <label>Publiczny opis (opcjonalnie)<input data-k="public_body" value="${esc(f.public_body || "")}"></label>
+        <button type="button" class="btn" data-save>Zapisz</button>
+      </div>
+    </div>`).join("") : '<div class="empty">Brak zgłoszeń w tym widoku.</div>';
+}
+async function loadFeedback() {
+  const { data, error } = await sb.rpc("admin_feedback_list");
+  if (error) { $("fblist").innerHTML = `<div class="empty">Nie udało się pobrać zgłoszeń: ${esc(error.message)}</div>`; return; }
+  feedback = data || [];
+  renderFeedback();
+}
+$("fblist").addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-save]"); if (!btn) return;
+  const box = btn.closest(".fb"); const p = {};
+  box.querySelectorAll("[data-k]").forEach((el) => { p[el.dataset.k] = el.type === "checkbox" ? el.checked : el.value.trim(); });
+  btn.disabled = true;
+  const { error } = await sb.rpc("admin_feedback_update", { p_id: box.dataset.id, p });
+  btn.disabled = false;
+  if (error) return toast("Nie zapisano: " + error.message, true);
+  toast("Zapisano zgłoszenie.");
+  loadFeedback();
+});
+document.querySelectorAll("#fbfilter button").forEach((b) => b.addEventListener("click", () => {
+  fbFilter = b.dataset.f;
+  document.querySelectorAll("#fbfilter button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  renderFeedback();
+}));
+document.querySelectorAll(".seg:not(#fbfilter) button").forEach((b) => b.addEventListener("click", () => {
   days = Number(b.dataset.days);
-  document.querySelectorAll(".seg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+  document.querySelectorAll(".seg:not(#fbfilter) button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
   load();
 }));
 $("refresh").onclick = load;
