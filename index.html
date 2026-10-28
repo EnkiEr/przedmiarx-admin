@@ -260,6 +260,30 @@ label.f input, label.f select { font: .92rem var(--font-body); color: var(--ink)
   </section>
 
   <section class="panel">
+    <h2>Zalogowani użytkownicy i promocje</h2>
+    <p class="sub">Logowanie przez Apple jest w aplikacji nieobowiązkowe. Promocje widzisz tylko Ty — użytkownik dostaje jedynie powiadomienie „Prezent od PrzedmiarX” z liczbą arkuszy przy następnym otwarciu aplikacji.</p>
+    <div class="kpis" style="margin:10px 0 14px">
+      <div class="kpi"><span class="lab">Zalogowani</span><span class="val" id="acTotal">–</span><span class="note" id="acNew">–</span></div>
+      <div class="kpi"><span class="lab">Aktywni 30 dni</span><span class="val" id="acActive">–</span></div>
+      <div class="kpi"><span class="lab">Arkusze w promocjach</span><span class="val" id="acGranted">–</span><span class="note" id="acClaimed">–</span></div>
+    </div>
+    <form id="grantAll" class="row" style="margin-bottom:14px">
+      <label class="f" style="width:110px">Arkusze<input id="gaSheets" type="number" min="1" max="1000" value="5" required></label>
+      <label class="f" style="flex:1;min-width:180px">Notatka (tylko dla Ciebie)<input id="gaNote" placeholder="np. Promocja listopad"></label>
+      <button class="btn" type="submit" style="align-self:end">Przyznaj wszystkim zalogowanym</button>
+    </form>
+    <div class="scroll"><table>
+      <thead><tr><th>E-mail</th><th>Język</th><th>Wersja</th><th class="num">Urządz.</th><th class="num">Zakupy</th><th class="num">Promocje</th><th>Ostatnio</th><th>Przyznaj</th></tr></thead>
+      <tbody id="acList"><tr><td colspan="8" class="empty">Ładowanie…</td></tr></tbody>
+    </table></div>
+    <h3 style="margin-top:16px">Historia promocji</h3>
+    <div class="scroll"><table>
+      <thead><tr><th>Data</th><th>Konto</th><th class="num">Arkusze</th><th>Notatka</th><th>Status</th><th></th></tr></thead>
+      <tbody id="grList"><tr><td colspan="6" class="empty">Brak promocji.</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <section class="panel">
     <h2>Ostatnie transakcje</h2>
     <div class="scroll"><table>
       <thead><tr><th>Data</th><th>Zdarzenie</th><th>Produkt</th><th class="num">Kwota</th><th>Kraj</th></tr></thead>
@@ -580,9 +604,61 @@ async function load() {
   renderUsage(usage, data.last_backup);
   renderTx(data.tx || []);
   loadFeedback();
+  loadAccounts();
   $("updated").textContent = "Stan na " + new Date().toLocaleString("pl-PL", { dateStyle: "medium", timeStyle: "short" });
 }
 
+
+// ——— Konta i promocje ———
+const ago = (t) => t ? new Date(t).toLocaleString("pl-PL", { dateStyle: "short", timeStyle: "short" }) : "–";
+async function loadAccounts() {
+  const { data, error } = await sb.rpc("admin_accounts_list");
+  if (error) { $("acList").innerHTML = `<tr><td colspan="8" class="empty">Nie udało się pobrać kont: ${esc(error.message)}</td></tr>`; return; }
+  $("acTotal").textContent = fmt(data.total);
+  $("acNew").textContent = "+" + fmt(data.new_7d) + " w 7 dni";
+  $("acActive").textContent = fmt(data.active_30d);
+  $("acGranted").textContent = fmt(data.granted);
+  $("acClaimed").textContent = fmt(data.claimed) + " odebranych";
+  const acc = data.accounts || [];
+  $("acList").innerHTML = acc.length ? acc.map((a) => `<tr data-sub="${esc(a.apple_sub)}">
+    <td>${esc(a.email || "(ukryty)")}${a.private_email ? ' <span class="pill">ukryty e-mail Apple</span>' : ""}${a.name ? `<div class="sub">${esc(a.name)}</div>` : ""}</td>
+    <td>${esc(LANG_LABEL[a.language] || a.language || "–")}</td><td>${esc(a.app_version || "–")}</td>
+    <td class="num">${a.devices}</td><td class="num">${a.purchases}</td>
+    <td class="num">${a.granted}${a.pending ? ` <span class="pill warn">${a.pending} czeka</span>` : ""}</td>
+    <td class="mono">${ago(a.last_seen_at)}</td>
+    <td><div class="row" style="flex-wrap:nowrap;gap:6px"><input type="number" min="1" max="1000" value="5" style="width:64px;font:.85rem var(--font-body);padding:5px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:5px"><button class="btn ghost" data-grant style="padding:5px 10px">+ Daj</button></div></td>
+  </tr>`).join("") : '<tr><td colspan="8" class="empty">Nikt się jeszcze nie zalogował.</td></tr>';
+  const gr = data.grants || [];
+  $("grList").innerHTML = gr.length ? gr.map((g) => `<tr>
+    <td class="mono">${ago(g.created_at)}</td><td>${esc(g.email || "(ukryty)")}</td><td class="num">${g.sheets}</td><td>${esc(g.note || "")}</td>
+    <td>${g.revoked_at ? '<span class="pill err">cofnięta</span>' : g.claimed_at ? `<span class="pill ok">odebrana ${ago(g.claimed_at)}</span>` : '<span class="pill warn">czeka na otwarcie aplikacji</span>'}</td>
+    <td>${!g.claimed_at && !g.revoked_at ? `<button class="btn ghost" data-revoke="${g.id}" style="padding:4px 10px">Cofnij</button>` : ""}</td>
+  </tr>`).join("") : '<tr><td colspan="6" class="empty">Brak promocji.</td></tr>';
+}
+async function grant(sub, sheets, note) {
+  const { data, error } = await sb.rpc("admin_grant_sheets", { p_sub: sub, p_sheets: sheets, p_note: note || null });
+  if (error) return toast("Nie przyznano: " + error.message, true);
+  toast(`Przyznano ${sheets} ark. — kont: ${data}. Użytkownik zobaczy powiadomienie przy otwarciu aplikacji.`);
+  loadAccounts();
+}
+$("acList").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-grant]"); if (!b) return;
+  const tr = b.closest("tr"); const n = Number(tr.querySelector("input").value);
+  if (n >= 1) grant(tr.dataset.sub, n, "");
+});
+$("grList").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-revoke]"); if (!b) return;
+  const { error } = await sb.rpc("admin_revoke_grant", { p_id: b.dataset.revoke });
+  if (error) return toast("Nie cofnięto: " + error.message, true);
+  toast("Promocja cofnięta."); loadAccounts();
+});
+$("grantAll").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const n = Number($("gaSheets").value), total = $("acTotal").textContent;
+  if (!(n >= 1)) return;
+  if (!confirm(`Przyznać ${n} darmowych arkuszy wszystkim zalogowanym (${total} kont)?`)) return;
+  grant(null, n, $("gaNote").value);
+});
 // ——— Zgłoszenia użytkowników ———
 const FB_STATUS = { new: "Nowe", in_progress: "W realizacji", planned: "Zaplanowane", done: "Zrobione", rejected: "Odrzucone" };
 const LANG_LABEL = { pl: "PL", en: "EN", de: "DE", uk: "UA", nb: "NO", fr: "FR", es: "ES" };
