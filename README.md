@@ -4,4 +4,4 @@ Panel administracyjny aplikacji PrzedmiarX (statystyki, sprzedaż, koszt AI, zys
 Dostęp: konto administratora + logowanie dwuskładnikowe (TOTP). Dane są chronione po stronie serwera (Supabase RLS
 i funkcje sprawdzające uprawnienia administratora oraz poziom uwierzytelnienia aal2).
 
-Adres: https://enkier.github.io/przedmiarx-admin/
+Adres: https://przedmiarx-admin.pages.dev/ (Cloudflare Pages)
